@@ -1,7 +1,6 @@
 #define computer Serial
 #define logger Serial1
 
-
 void setup() {
   computer.begin(9600);
   logger.begin(9600);
