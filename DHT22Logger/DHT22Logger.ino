@@ -1,44 +1,48 @@
+/*
+ * A temperature and humidity logger that can store values every 6 seconds
+ * and send them to a secondary serial port to be retrieved.
+ * 
+ * It makes use of the DHT22 sensor, a digital sensor.
+ * Whenever any character is sensed on Serial1 (connected on the Mega 
+ * on 19(RX) and 18(TX), and operates at 9600 bps), it will simply send 
+ * all of the current data to that port.
+ * 
+ */
+
 #include "DHT.h"
+
+#define computer Serial
+#define bridge Serial1
 
 #define DHTPIN 7 // define pin where DHT22 is connected
 #define DHTTYPE DHT22 // define DHT22 sensor (it could be DHT11)
-
-DHT dht(DHTPIN, DHTTYPE);
 
 #define N 600
 float humidity[N];
 float temperature[N];
 int current = 0;
 
-void acquireDHT();
+DHT dht(DHTPIN, DHTTYPE); // initialize the sensor, global variable
 
 void setup()
 {
-  // Start the Arduino hardware serial port at 9600 baud
   Serial1.begin(9600);
-  // Start DHT22 communication
-  
   dht.begin();
 }
 
 void loop() {
-    // This sketch displays information every time a new sentence is correctly encoded.
-    acquireDHT();
+  acquireDHT();
 
-    if (Serial1.available() > 0) {
-        while (Serial1.read() != -1) {
-          ;
-        }  
-        sendAll();    
-    }
+  if (bridge.available()) {
+    int c;
+    while ( (c = bridge.read()) != -1 ) {
+       ;
+    } 
 
-    if (current == N-1) {
-        current = 0;
-    } else {
+    sendAll();    
+  }
     
-    }
-
-    delay(6000);
+  delay(6000);
 }
 
 void acquireDHT()
@@ -52,12 +56,15 @@ void acquireDHT()
         temperature[current] = t;
         current++;
     }    
+    if (current == N) {
+      current = 0;
+    }
 }
 
 void sendAll() {
   int j = 0;
   for (j = 0 ; j < current; j++) {
-    Serial1.print(F("Humidity: ")); Serial1.print(humidity[j]); Serial1.print(F("% "));
-    Serial1.print(F("Temperature: ")); Serial1.print(temperature[j]); Serial1.println(F(" °C ")); 
+    bridge.print(F("Humidity: ")); bridge.print(humidity[j]); bridge.print(F("% "));
+    bridge.print(F("Temperature: ")); bridge.print(temperature[j]); bridge.println(F(" °C ")); 
   }
 }

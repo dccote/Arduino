@@ -13,7 +13,9 @@ For most work with sensors, you need to install `Adafruit` library.  In the Ardu
 
 <img src="README.assets/image-20200223144841744.png" alt="image-20200223144841744" style="zoom:25%;" />
 
-Then Adafruit Unified Sensors which you can install:
+then choose the library **Adafruit Unified Sensors** which you can install:
 
 <img src="README.assets/image-20200223144459484.png" alt="image-20200223144459484" style="zoom: 25%;" />
+
+You may need other libraries which you may find in the Library Manager, or in the Arduino Libraries folder for the [bootcamp](https://drive.google.com/open?id=18GHKEBaW2cN3h2tDedXozpFqsq8FvtFG).
 
