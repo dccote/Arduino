@@ -17,17 +17,11 @@
  #include <avr/power.h> // Required for 16 MHz Adafruit Trinket
 #endif
 
-// Digital IO pin connected to the button. This will be driven with a
-// pull-up resistor so the switch pulls the pin to ground momentarily.
-// On a high -> low transition the button press logic will execute.
-#define BUTTON_PIN   2
-
 #define PIXEL_PIN    12  // Digital IO pin connected to the NeoPixels.
-
 #define PIXEL_COUNT 16  // Number of NeoPixels
 
 // Declare our NeoPixel strip object:
-Adafruit_NeoPixel strip(PIXEL_COUNT, PIXEL_PIN, NEO_RGBW + NEO_KHZ800);
+Adafruit_NeoPixel strip(PIXEL_COUNT, PIXEL_PIN, NEO_GRBW + NEO_KHZ800);
 // Argument 1 = Number of pixels in NeoPixel strip
 // Argument 2 = Arduino pin number (most are valid)
 // Argument 3 = Pixel type flags, add together as needed:
@@ -37,37 +31,30 @@ Adafruit_NeoPixel strip(PIXEL_COUNT, PIXEL_PIN, NEO_RGBW + NEO_KHZ800);
 //   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
 //   NEO_RGBW    Pixels are wired for RGBW bitstream (NeoPixel RGBW products)
 
-boolean oldState = HIGH;
-int     mode     = 0;    // Currently-active animation mode, 0-9
-int     alarm    = 1000;
 
-arduinoFFT FFT = arduinoFFT(); /* Create FFT object */
-/*
-These are the input and output vectors
-Input vectors receive computed results from FFT
-*/
 
-#define SCL_INDEX 0x00
-#define SCL_TIME 0x01
-#define SCL_FREQUENCY 0x02
-#define SCL_PLOT 0x03
+
+/* Microphone variables */
+
 
 #define N_SAMPLES 256
+short sampleBuffer[N_SAMPLES]; // buffer to read samples into, each sample is 16-bits
+volatile int samplesRead;      // number of samples read
 
-// buffer to read samples into, each sample is 16-bits
-short sampleBuffer[N_SAMPLES];
-// FFT buffer
+/* Audio spectrum variables */
+arduinoFFT FFT = arduinoFFT(); /* Create FFT object */
+/*
+These are the input and output vectors, and also used for FFT
+Input vectors receive computed results from FFT
+*/
 double vReal[N_SAMPLES];
 double vImag[N_SAMPLES];
 
-// number of samples read
-volatile int samplesRead;
 
 void setup() {
   Serial.begin(9600);
   while (!Serial);
 
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
   strip.begin(); // Initialize NeoPixel strip object (REQUIRED)
   strip.show();  // Initialize all pixels to 'off'
 
@@ -90,7 +77,7 @@ void setup() {
 void loop() {
   // wait for samples to be read
   if (samplesRead ) {
-    spectrum();
+    computeSpectrum();
   }
 
 //  soundAlarm();
@@ -105,33 +92,6 @@ void soundAlarm() {
 
 }
 
-void printSamplesRead() {
-    // print samples to the serial monitor or plotter
-    for (int i = 0; i < samplesRead; i++) {
-      Serial.println(sampleBuffer[i]);
-      // check if the sound value is higher than 500
-      if (sampleBuffer[i]>=500){
-        digitalWrite(LEDR,LOW);
-        digitalWrite(LEDG,HIGH);
-        digitalWrite(LEDB,HIGH);
-      }
-      // check if the sound value is higher than 250 and lower than 500
-      if (sampleBuffer[i]>=250 && sampleBuffer[i] < 500){
-        digitalWrite(LEDB,LOW);
-        digitalWrite(LEDR,HIGH);
-        digitalWrite(LEDG,HIGH);
-      }
-      //check if the sound value is higher than 0 and lower than 250
-      if (sampleBuffer[i]>=0 && sampleBuffer[i] < 250){
-        digitalWrite(LEDG,LOW);
-        digitalWrite(LEDR,HIGH);
-        digitalWrite(LEDB,HIGH);
-      }
-    }
-
-    // clear the read count
-    samplesRead = 0;
-}
 
 void onPDMdata() {
   // query the number of bytes available
@@ -144,38 +104,9 @@ void onPDMdata() {
   samplesRead = bytesAvailable / 2;
 }
 
-//void loop()
-//{
-//  /* Build raw data */
-//  double cycles = (((samples-1) * signalFrequency) / samplingFrequency); //Number of signal cycles that the sampling will read
-//  for (uint16_t i = 0; i < samples; i++)
-//  {
-//    vReal[i] = int8_t((amplitude * (sin((i * (twoPi * cycles)) / samples))) / 2.0);/* Build data with positive and negative values*/
-//    //vReal[i] = uint8_t((amplitude * (sin((i * (twoPi * cycles)) / samples) + 1.0)) / 2.0);/* Build data displaced on the Y axis to include only positive values*/
-//    vImag[i] = 0.0; //Imaginary part must be zeroed in case of looping to avoid wrong calculations and overflows
-//  }
-//  /* Print the results of the simulated sampling according to time */
-//  Serial.println("Data:");
-//  PrintVector(vReal, samples, SCL_TIME);
-//  FFT.Windowing(vReal, samples, FFT_WIN_TYP_HAMMING, FFT_FORWARD);  /* Weigh data */
-//  Serial.println("Weighed data:");
-//  PrintVector(vReal, samples, SCL_TIME);
-//  FFT.Compute(vReal, vImag, samples, FFT_FORWARD); /* Compute FFT */
-//  Serial.println("Computed Real values:");
-//  PrintVector(vReal, samples, SCL_INDEX);
-//  Serial.println("Computed Imaginary values:");
-//  PrintVector(vImag, samples, SCL_INDEX);
-//  FFT.ComplexToMagnitude(vReal, vImag, samples); /* Compute magnitudes */
-//  Serial.println("Computed magnitudes:");
-//  PrintVector(vReal, (samples >> 1), SCL_FREQUENCY);
-//  double x = FFT.MajorPeak(vReal, samples, samplingFrequency);
-//  Serial.println(x, 6);
-////  while(1); /* Run Once */
-//  delay(2000); /* Repeat after delay */
-//}
 
-void spectrum() {
-
+void computeSpectrum() {
+  
   for (uint16_t i = 0; i < N_SAMPLES; i++) {
     vReal[i] = double(sampleBuffer[i]);
     vImag[i] = 0.0; 
@@ -183,7 +114,32 @@ void spectrum() {
 
   FFT.Compute(vReal, vImag, N_SAMPLES, FFT_FORWARD); /* Compute FFT */
   FFT.ComplexToMagnitude(vReal, vImag, N_SAMPLES); /* Compute magnitudes */
-  vReal[0] = 0.;
+  vReal[0] = 0.;  // Remove DC component, always very large
+
+  binSoundHistogram();
+  
+  showSoundLevels();
+}
+
+void showSoundLevels() {
+  double maxValue = 5000;
+  uint8_t intensity[16];
+  for (uint16_t i = 0; i < 16; i++) {
+     intensity[i] = uint8_t(vReal[i]/maxValue*255.0);
+  }
+  
+  for(int i=0; i<strip.numPixels(); i++) { // For each pixel in strip...
+//    uint32_t color = strip.gamma32(strip.ColorHSV(65536/3, 255, intensity[i])); // hue -> RGB
+//    uint32_t color = strip.Color(  0, intensity[i],   0);
+//    uint32_t color = strip.Color(127, 127, 127);
+    uint32_t color = strip.gamma32(strip.ColorHSV((65536/6*intensity[i])/255, 255, intensity[i])); // hue -> RGB
+    strip.setPixelColor(i, color);         //  Set pixel's color (in RAM)
+    strip.show();                          //  Update strip to match
+  }
+
+}
+
+void binSoundHistogram() {
   double maxValue = 0;
   int8_t binSize = (N_SAMPLES/2/2)/16;
   for (uint16_t i = 0; i < 16; i++) {
@@ -196,115 +152,11 @@ void spectrum() {
       maxValue = sum;
     }
   }
-//  Serial.println(maxValue);
-  maxValue = 5000;
-  uint8_t intensity[16];
-  for (uint16_t i = 0; i < 16; i++) {
-     intensity[i] = uint8_t(vReal[i]/maxValue*255.0);
-//     Serial.print(i);
-//     Serial.print("\t");
-//     Serial.println(intensity[i]);
-  }
-
-  for(int i=0; i<strip.numPixels(); i++) { // For each pixel in strip...
-//    uint32_t color = strip.gamma32(strip.ColorHSV(65536/3, 255, intensity[i])); // hue -> RGB
-    uint32_t color = strip.gamma32(strip.ColorHSV(65536/3 - (65536/3*intensity[i])/255, 255, intensity[i])); // hue -> RGB
-//    uint32_t color = strip.Color(  0, intensity[i],   0);
-//    uint32_t color = strip.Color(127, 127, 127);
-    strip.setPixelColor(i, color);         //  Set pixel's color (in RAM)
-    strip.show();                          //  Update strip to match
-//    delay(200);                           //  Pause for a moment
-  }
-
-//  
-//
-//  Serial.println(maxValue);
-//  PrintVector(vReal, N_SAMPLES, SCL_INDEX);
-//  delay(2000);
 }
 
-
-void PrintVector(double *vData, uint16_t bufferSize, uint8_t scaleType)
-{
-  for (uint16_t i = 0; i < bufferSize; i++)
-  {
-    double abscissa = i;
-//    /* Print abscissa value */
-//    switch (scaleType)
-//    {
-//      case SCL_INDEX:
-//        abscissa = (i * 1.0);
-//  break;
-//      case SCL_TIME:
-//        abscissa = ((i * 1.0) / samplingFrequency);
-//  break;
-//      case SCL_FREQUENCY:
-//        abscissa = ((i * 1.0 * samplingFrequency) / samples);
-//  break;
-//    }
-    Serial.print(abscissa, 6);
-    if(scaleType==SCL_FREQUENCY)
-      Serial.print("Hz");
-    Serial.print(" ");
-    Serial.println(vData[i], 4);
-  }
-  Serial.println();
+void normaliseSound(double factor) {
+  
 }
-
-
-//void setup() {
-//  pinMode(BUTTON_PIN, INPUT_PULLUP);
-//  strip.begin(); // Initialize NeoPixel strip object (REQUIRED)
-//  strip.show();  // Initialize all pixels to 'off'
-//}
-
-//void loop() {
-//  // Get current button state.
-//  boolean newState = digitalRead(BUTTON_PIN);
-//
-//  // Check if state changed from high to low (button press).
-//  if((newState == LOW) && (oldState == HIGH)) {
-//    // Short delay to debounce button.
-//    delay(20);
-//    // Check if button is still low after debounce.
-//    newState = digitalRead(BUTTON_PIN);
-//    if(newState == LOW) {      // Yes, still low
-//      if(++mode > 8) mode = 0; // Advance to next mode, wrap around after #8
-//      switch(mode) {           // Start the new animation...
-//        case 0:
-//          colorWipe(strip.Color(  0,   0,   0), 50);    // Black/off
-//          break;
-//        case 1:
-//          colorWipe(strip.Color(255,   0,   0), 50);    // Red
-//          break;
-//        case 2:
-//          colorWipe(strip.Color(  0, 255,   0), 50);    // Green
-//          break;
-//        case 3:
-//          colorWipe(strip.Color(  0,   0, 255), 50);    // Blue
-//          break;
-//        case 4:
-//          theaterChase(strip.Color(127, 127, 127), 50); // White
-//          break;
-//        case 5:
-//          theaterChase(strip.Color(127,   0,   0), 50); // Red
-//          break;
-//        case 6:
-//          theaterChase(strip.Color(  0,   0, 127), 50); // Blue
-//          break;
-//        case 7:
-//          rainbow(10);
-//          break;
-//        case 8:
-//          theaterChaseRainbow(50);
-//          break;
-//      }
-//    }
-//  }
-//
-//  // Set the last-read button state to the old state.
-//  oldState = newState;
-//}
 
 // Fill strip pixels one after another with a color. Strip is NOT cleared
 // first; anything there will be covered pixel by pixel. Pass in color
