@@ -44,11 +44,13 @@ double vImag[N_SAMPLES];
 
 void binSoundHistogram(int8_t binSize = (N_SAMPLES/2/2)/PIXEL_COUNT);
 void showSoundLevels(double maxValue = 5000);
+void blink(int repetition = 1);
 
 void setup() {
+  /* Feedback LED to avoid using serial port */
+  pinMode(LED_BUILTIN, OUTPUT);
   /* Setup serial port */
   Serial.begin(9600);
-  while (!Serial);
 
   /* Setup neopixel strip */
   strip.begin(); // Initialize NeoPixel strip object (REQUIRED)
@@ -59,15 +61,25 @@ void setup() {
   PDM.setGain(20);          
 
   if (!PDM.begin(1, 16000)) { // mono at 16 kHz
-    Serial.println("Failed to start PDM!");
+    blink(2);      
     while (1);
   }
 
 }
 
+void blink(int repetition) {
+  while (repetition) {
+    digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
+    delay(150);                       // wait for a second
+    digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
+    delay(150); 
+    repetition--;
+  }
+}
+
 void loop() {
   // When we have samples, we manipulate the spectrum
-  if (samplesRead ) {
+  if (samplesRead) {
     computeSoundSpectrum();
     binSoundHistogram();
     showSoundLevels();
@@ -90,6 +102,11 @@ void onPDMdata() {
   int bytesAvailable = PDM.available();
 
   // read into the sample buffer
+  if (bytesAvailable/2 > N_SAMPLES) {
+    Serial.println("PDM returning more bytes than expected. Limiting to buffer size.");
+    bytesAvailable = N_SAMPLES;
+  }
+  
   PDM.read(sampleBuffer, bytesAvailable);
 
   // 16-bit, 2 bytes per sample
